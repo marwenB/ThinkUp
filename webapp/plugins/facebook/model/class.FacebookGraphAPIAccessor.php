@@ -39,8 +39,7 @@ class FacebookGraphAPIAccessor {
      * @return array Decoded JSON response
      */
     public static function apiRequest($path, $access_token=null, $params=null, $fields=null) {
-        //$api_domain = 'https://graph.facebook.com/v2.3/';
-        $api_domain = 'https://graph.facebook.com/';
+        $api_domain = 'https://graph.facebook.com/v2.3/';
 
         //Set up URL parameters
         $api_call_params = $params;
