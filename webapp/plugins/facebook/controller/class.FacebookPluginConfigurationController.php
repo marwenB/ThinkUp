@@ -128,41 +128,9 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
 
         self::processPageActions($options, $facebook);
 
-        $logger = Logger::getInstance();
-        $user_pages = array();
-        $user_admin_pages = array();
         $instance_dao = DAOFactory::getDAO('InstanceDAO');
         $instances = $instance_dao->getByOwnerAndNetwork($this->owner, 'facebook');
 
-        $owner_instance_dao = DAOFactory::getDAO('OwnerInstanceDAO');
-        foreach ($instances as $instance) {
-            // TODO: figure out if the scope has changed since this instance last got its tokens,
-            // and we need to get re-request permission with the new scope
-            $tokens = $owner_instance_dao->getOAuthTokens($instance->id);
-            $access_token = $tokens['oauth_access_token'];
-            if ($instance->network == 'facebook') { //not a page
-                $sub_accounts = FacebookGraphAPIAccessor::apiRequest($instance->network_user_id.'/accounts',
-                $access_token);
-                if (!empty($sub_accounts->data)) {
-                    $user_admin_pages[$instance->network_user_id] = array();
-                    foreach ($sub_accounts->data as $act) {
-                        if (self::isAccountPage($act->id, $access_token)) {
-                            $user_admin_pages[$instance->network_user_id][] = $act;
-                        }
-                    }
-                }
-            }
-            if (isset($tokens['auth_error']) && $tokens['auth_error'] != '') {
-                $instance->auth_error = $tokens['auth_error'];
-            }
-        }
-        $this->addToView('user_pages', $user_pages);
-        $this->addToView('user_admin_pages', $user_admin_pages);
-
-        $owner_instance_pages = $instance_dao->getByOwnerAndNetwork($this->owner, 'facebook page');
-        if (count($owner_instance_pages) > 0) {
-            $this->addToView('owner_instance_pages', $owner_instance_pages);
-        }
         $this->addToView('instances', $instances);
     }
     /**
