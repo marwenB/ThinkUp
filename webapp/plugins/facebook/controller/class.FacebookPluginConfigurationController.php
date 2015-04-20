@@ -142,13 +142,7 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
             $tokens = $owner_instance_dao->getOAuthTokens($instance->id);
             $access_token = $tokens['oauth_access_token'];
             if ($instance->network == 'facebook') { //not a page
-                $pages = FacebookGraphAPIAccessor::apiRequest('/'.$instance->network_user_id.'/likes',
-                $access_token);
-                if (@$pages->data) {
-                    $user_pages[$instance->network_user_id] = $pages->data;
-                }
-
-                $sub_accounts = FacebookGraphAPIAccessor::apiRequest('/'.$instance->network_user_id.'/accounts',
+                $sub_accounts = FacebookGraphAPIAccessor::apiRequest($instance->network_user_id.'/accounts',
                 $access_token);
                 if (!empty($sub_accounts->data)) {
                     $user_admin_pages[$instance->network_user_id] = array();
