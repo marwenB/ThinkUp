@@ -80,7 +80,7 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
      * @return bool
      */
     protected function isAccountPage($account_id, $access_token) {
-        $account = FacebookGraphAPIAccessor::apiRequest('/' . $account_id . '?metadata=true', $access_token);
+        $account = FacebookGraphAPIAccessor::apiRequest($account_id, $access_token, array('metadata'=>'true'));
         return !empty($account)
         && ((!empty($account->type)  && (strcmp($account->type, 'page')==0))
         || (!empty($account->metadata->type) && (strcmp($account->metadata->type, 'page')==0)));
@@ -90,22 +90,12 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
      * @param array $options 'facebook_app_id' and 'facebook_api_secret'
      */
     protected function setUpFacebookInteractions($options) {
-        // Create our Facebook Application instance
+        //Create our Facebook Application instance
         $facebook = new Facebook(array(
-        'appId'  => $options['facebook_app_id']->option_value,
-        'secret' => $options['facebook_api_secret']->option_value
+            'appId'  => $options['facebook_app_id']->option_value,
+            'secret' => $options['facebook_api_secret']->option_value
         ));
 
-        $fb_user = $facebook->getUser();
-        if ($fb_user) {
-            try {
-                $fb_user_profile = $facebook->api('/me');
-            } catch (FacebookApiException $e) {
-                error_log($e);
-                $fb_user = null;
-                $fb_user_profile = null;
-            }
-        }
         // Plant unique token for CSRF protection during auth per https://developers.facebook.com/docs/authentication/
         if (SessionCache::get('facebook_auth_csrf') == null) {
             SessionCache::put('facebook_auth_csrf', md5(uniqid(rand(), true)));
@@ -123,10 +113,10 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
             }
         }
 
-        $params = array('scope'=>'read_stream,user_likes,user_location,user_website,'.
-        'read_friendlists,friends_location,manage_pages,read_insights,user_birthday,friends_birthday',
-        'state'=>SessionCache::get('facebook_auth_csrf'),
-        'redirect_uri'=> (Utils::getApplicationURL(). 'account/?p=facebook')
+        $params = array(
+            'scope'=>'read_stream,read_friendlists,manage_pages,read_insights',
+            'state'=>SessionCache::get('facebook_auth_csrf'),
+            'redirect_uri'=> (Utils::getApplicationURL(). 'account/?p=facebook')
         );
 
         $fbconnect_link = $facebook->getLoginUrl($params);
@@ -194,44 +184,76 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
             if ($_GET["state"] == SessionCache::get('facebook_auth_csrf')) {
                 //Prepare API request
                 //First, prep redirect URI
-                $redirect_uri = urlencode(Utils::getApplicationURL(). 'account/?p=facebook');
+                $redirect_uri = Utils::getApplicationURL(). 'account/?p=facebook';
 
                 //Build API request URL
-                $api_req = 'https://graph.facebook.com/oauth/access_token?client_id='.
-                $options['facebook_app_id']->option_value.'&client_secret='.
-                $options['facebook_api_secret']->option_value. '&redirect_uri='.$redirect_uri.'&state='.
-                SessionCache::get('facebook_auth_csrf').'&code='.$_GET["code"];
+                $api_req = 'oauth/access_token';
+                $api_req_params = array(
+                    'client_id'=> $options['facebook_app_id']->option_value,
+                    'client_secret' => $options['facebook_api_secret']->option_value,
+                    'redirect_uri' => $redirect_uri,
+                    'state'=> SessionCache::get('facebook_auth_csrf'),
+                    'code'=>$_GET["code"]
+                );
 
-                $access_token_response = FacebookGraphAPIAccessor::rawApiRequest($api_req, false);
+                $access_token_response = FacebookGraphAPIAccessor::apiRequest($api_req, null, $api_req_params, null);
+                //DEBUG
+                // $logger = Logger::getInstance();
+                // $logger->logInfo("Access token response: ".Utils::varDumpToString($access_token_response),
+                //     __METHOD__.','.__LINE__);
+
+                if (isset($access_token_response->error)) {
+                    $this->addErrorMessage("There was a problem. Facebook says: "
+                        .$access_token_response->error->message." Please try again.", 'user_add');
+                    $logger->logInfo("Added error message ",
+                        __METHOD__.','.__LINE__);
+                    return;
+                }
+
+                //Graph API 2.3 migration: Use the next line, delete the one after it.
+                //$access_token = $access_token_response->access_token;
                 parse_str($access_token_response);
+
                 if (isset($access_token)) {
                     /**
                      * Swap in short-term token for long-lived token as per
                      * https://developers.facebook.com/docs/facebook-login/access-tokens/#extending
                      */
-                    $api_req = 'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id='.
-                    $options['facebook_app_id']->option_value.'&client_secret='.
-                    $options['facebook_api_secret']->option_value. '&fb_exchange_token='.$access_token;
+                    $api_req = 'oauth/access_token';
+                    $api_req_params = array(
+                        'grant_type'=>'fb_exchange_token',
+                        'client_id'=> $options['facebook_app_id']->option_value,
+                        'client_secret'=> $options['facebook_api_secret']->option_value,
+                        'fb_exchange_token'=>$access_token
+                    );
 
-                    $access_token_response = FacebookGraphAPIAccessor::rawApiRequest($api_req, false);
+                    $access_token_response = FacebookGraphAPIAccessor::apiRequest($api_req, null, $api_req_params);
+                    //DEBUG
+                    // $logger->logInfo("Exchanged access token response: ".Utils::varDumpToString($access_token_response),
+                    //     __METHOD__.','.__LINE__);
+
+                    //Graph API 2.3 migration: Use the next line, delete the one after it.
+                    //$access_token = $access_token_response->access_token;
                     parse_str($access_token_response);
 
-                    $facebook->setAccessToken($access_token);
-                    $fb_user_profile = $facebook->api('/me');
-                    $fb_username = $fb_user_profile['name'];
-                    $fb_user_id = $fb_user_profile['id'];
+                    $fb_user_profile = FacebookGraphAPIAccessor::apiRequest('me', $access_token);
+                    //DEBUG
+                    // $logger->logInfo("FB user profile: ".Utils::varDumpToString($fb_user_profile),
+                    //     __METHOD__.','.__LINE__);
+                    $fb_username = $fb_user_profile->name;
+                    $fb_user_id = $fb_user_profile->id;
 
                     if (empty($fb_username)) {
                         $error = 'Sorry, ThinkUp does not support business accounts.';
-                        $this->addErrorMessage($error, 'authorization');
+                        $this->addErrorMessage($error, 'user_add');
                     } else {
                         $this->saveAccessToken($fb_user_id, $access_token, $fb_username);
                     }
                 } else {
                     $error_msg = "Problem authorizing your Facebook account! Please correct your plugin settings.";
-                    $error_object = json_decode($access_token_response);
+                    $error_object = $access_token_response;
                     if (isset($error_object) && isset($error_object->error->type)
-                    && isset($error_object->error->message)) {
+                        && isset($error_object->error->message)) {
                         $error_msg = $error_msg."<br>Facebook says: \"".$error_object->error->type.": "
                         .$error_object->error->message. "\"";
                     } else {
@@ -253,8 +275,8 @@ class FacebookPluginConfigurationController extends PluginConfigurationControlle
             $tokens = $oid->getOAuthTokens($_GET["instance_id"]);
             $access_token = $tokens['oauth_access_token'];
 
-            $page_data = FacebookGraphAPIAccessor::apiRequest('/'.$_GET["facebook_page_id"], $access_token,
-            "id,name,picture");
+            $page_data = FacebookGraphAPIAccessor::apiRequest($_GET["facebook_page_id"], $access_token, null,
+                "id,name,picture");
             self::insertPage($page_data->id, $_GET["viewer_id"], $_GET["instance_id"], $page_data->name,
             $page_data->picture->data->url);
         }

@@ -94,9 +94,10 @@ class FacebookCrawler {
         $user_object = null;
         if ($force_reload_from_facebook || !$user_dao->isUserInDB($user_id, $network)) {
             // Get owner user details and save them to DB
-            $fields = $network!='facebook page'?'id,name,gender,about,location,website,is_verified,'.
-              'subscribers,updated_time,birthday':'';
-            $user_details = FacebookGraphAPIAccessor::apiRequest('/'.$user_id, $this->access_token, $fields);
+            $fields = $network!='facebook page'?/*'id,name,gender,about,location,website,is_verified,'.
+              'subscribers,updated_time,birthday':''*/
+              'id,name,is_verified,updated_time':'';
+            $user_details = FacebookGraphAPIAccessor::apiRequest($user_id, $this->access_token, null, $fields);
             if (isset($user_details)) {
                 $user_details->network = $network;
             }
@@ -189,7 +190,7 @@ class FacebookCrawler {
 
         $fetch_next_page = true;
         $current_page_number = 1;
-        $next_api_request = 'https://graph.facebook.com/' .$id. '/feed?access_token=' .$this->access_token;
+        $next_api_request = $id.'/feed';
 
         //Cap crawl time for very busy pages with thousands of likes/comments
         $fetch_stop_time = time() + $this->max_crawl_time;
@@ -202,7 +203,7 @@ class FacebookCrawler {
         ($since < 0)?$since=0:$since=$since;
 
         while ($fetch_next_page) {
-            $stream = FacebookGraphAPIAccessor::rawApiRequest($next_api_request, true);
+            $stream = FacebookGraphAPIAccessor::apiRequest($next_api_request, $this->access_token);
             if (isset($stream->data) && is_array($stream->data) && sizeof($stream->data) > 0) {
                 $this->logger->logInfo(sizeof($stream->data)." Facebook posts found on page ".$current_page_number,
                 __METHOD__.','.__LINE__);
@@ -431,14 +432,14 @@ class FacebookCrawler {
                         && $must_process_comments) {
                             if (is_int($comments_difference)) {
                                 $offset = $p->comments->count - $comments_difference;
-                                $offset_str = "&offset=".$offset."&limit=".$comments_difference;
+                                $offset_arr = array('offset'=>$offset, 'limit'=>$comments_difference);
                             } else {
-                                $offset_str = "";
+                                $offset_arr = null;
                             }
-                            $api_call = 'https://graph.facebook.com/'.$p->from->id.'_'.$post_id.
-                              '/comments?access_token='. $this->access_token.$offset_str;
+                            $api_call = $p->from->id.'_'.$post_id. '/comments';
                             do {
-                                $comments_stream = FacebookGraphAPIAccessor::rawApiRequest($api_call);
+                                $comments_stream = FacebookGraphAPIAccessor::apiRequest($api_call, $this->access_token,
+                                    $offset_arr);
                                 if (isset($comments_stream) && isset($comments_stream->data)
                                 && is_array($comments_stream->data)) {
                                     foreach ($comments_stream->data as $c) {
@@ -545,15 +546,15 @@ class FacebookCrawler {
                         if (isset($p->likes->count) && $p->likes->count > $likes_captured && $must_process_likes) {
                             if (is_int($likes_difference)) {
                                 $offset = $p->likes->count - $likes_difference;
-                                $offset_str = "&offset=".$offset;
+                                $offset_arr = array('offset'=>$offset);
                             } else {
-                                $offset_str = "";
+                                $offset_arr = null;
                             }
 
-                            $api_call = 'https://graph.facebook.com/'.$p->from->id.'_'.$post_id.'/likes?access_token='.
-                            $this->access_token.$offset_str;
+                            $api_call = $p->from->id.'_'.$post_id.'/likes';
                             do {
-                                $likes_stream = FacebookGraphAPIAccessor::rawApiRequest($api_call);
+                                $likes_stream = FacebookGraphAPIAccessor::apiRequest($api_call, $this->access_token,
+                                    $offset_arr);
                                 if (isset($likes_stream) && is_array($likes_stream->data)) {
                                     foreach ($likes_stream->data as $l) {
                                         if (isset($l->name) && isset($l->id)) {
@@ -783,8 +784,8 @@ class FacebookCrawler {
                 $output->count++;
             }
             if (!empty($comments->paging->next)) {
-                $next_url = $comments->paging->next . '&access_token=' . $this->access_token;
-                $comments = FacebookGraphAPIAccessor::rawApiRequest($next_url);
+                $next_url = $comments->paging->next;
+                $comments = FacebookGraphAPIAccessor::apiRequest($next_url, $this->access_token);
             } else {
                 $comments = null;
             }
@@ -815,8 +816,8 @@ class FacebookCrawler {
                 $output->count++;
             }
             if (!empty($likes->paging->next)) {
-                $next_url = $likes->paging->next . '&access_token=' . $this->access_token;
-                $likes = FacebookGraphAPIAccessor::rawApiRequest($next_url);
+                $next_url = $likes->paging->next;
+                $likes = FacebookGraphAPIAccessor::apiRequest($next_url, $this->access_token);
             } else {
                 $likes = null;
             }
