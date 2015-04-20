@@ -145,23 +145,23 @@ class FacebookCrawler {
             $user_vals["user_name"] = $details->name;
             $user_vals["full_name"] = $details->name;
             $user_vals["user_id"] = $details->id;
-            $user_vals["gender"] = $details->gender;
+            //$user_vals["gender"] = $details->gender;
             // We only want to store valid full birthdays
-            if (substr_count($details->birthday, '/') > 1) {
-                $birth_ts = strtotime($details->birthday);
-                // This check may become invalid as modern medicine improves
-                if ($birth_ts >= (time() - (60*60*24*365*130))) {
-                    $user_vals["birthday"] = date('Y-m-d', $birth_ts);
-                }
-            }
-            $user_vals["avatar"] = 'https://graph.facebook.com/'.$details->id.'/picture';
-            $user_vals['url'] = isset($details->website)?$details->website:'';
+            // if (substr_count($details->birthday, '/') > 1) {
+            //     $birth_ts = strtotime($details->birthday);
+            //     // This check may become invalid as modern medicine improves
+            //     if ($birth_ts >= (time() - (60*60*24*365*130))) {
+            //         $user_vals["birthday"] = date('Y-m-d', $birth_ts);
+            //     }
+            // }
+            $user_vals["avatar"] = $api_url.$details->id.'/picture';
+            //$user_vals['url'] = isset($details->website)?$details->website:'';
 
-            if (isset($details->subscribers->summary->total_count)) {
-                $follower_count = $details->subscribers->summary->total_count;
-            } else {
-                $follower_count = 0;
-            }
+            // if (isset($details->subscribers->summary->total_count)) {
+            //     $follower_count = $details->subscribers->summary->total_count;
+            // } else {
+            //     $follower_count = 0;
+            // }
             $user_vals["follower_count"] = $follower_count;
             $user_vals["location"] = isset($details->location->name)?$details->location->name:'';
             $user_vals["description"] = isset($details->about)?$details->about:'';
@@ -186,7 +186,7 @@ class FacebookCrawler {
         $network = $this->instance->network;
 
         // fetch user's friends
-        $this->fetchAndStoreSubscribers();
+        //$this->fetchAndStoreSubscribers();
 
         $fetch_next_page = true;
         $current_page_number = 1;
@@ -211,6 +211,7 @@ class FacebookCrawler {
                 $this->processStream($stream, $network, $current_page_number);
 
                 if (isset($stream->paging->next)) {
+                    //@TODO Figure out how this is working (if it is?)
                     $next_api_request = $stream->paging->next . '&since=' . $since;
                     $current_page_number++;
                 } else {
@@ -400,9 +401,9 @@ class FacebookCrawler {
                                             $comment_to_process = array("post_id"=>$comment_id,
                                               "author_username"=>$c->from->name,
                                               "author_fullname"=>$c->from->name,
-                                              "author_gender"=>$c->from->gender,
-                                              "author_birthday"=>$c->from->birthday,
-                                              "author_avatar"=>'https://graph.facebook.com/'.$c->from->id.'/picture',
+                                              //"author_gender"=>$c->from->gender,
+                                              //"author_birthday"=>$c->from->birthday,
+                                              "author_avatar"=>$api_url.$c->from->id.'/picture',
                                               "author_user_id"=>$c->from->id,"post_text"=>$c->message,
                                               "pub_date"=>$c->created_time, "in_reply_to_user_id"=>$profile->user_id,
                                               "in_reply_to_post_id"=>$post_id, "source"=>'', 'network'=>$network,
@@ -451,9 +452,9 @@ class FacebookCrawler {
                                             if (!isset($comment_in_storage)) {
                                                 $comment_to_process = array("post_id"=>$comment_id,
                                                 "author_username"=>$c->from->name, "author_fullname"=>$c->from->name,
-                                                "author_gender"=>$c->from->gender,
-                                                "author_birthday"=>$c->from->birthday,
-                                                "author_avatar"=>'https://graph.facebook.com/'.
+                                                //"author_gender"=>$c->from->gender,
+                                                //"author_birthday"=>$c->from->birthday,
+                                                "author_avatar"=>$api_url.
                                                 $c->from->id.'/picture', "author_user_id"=>$c->from->id,
                                                 "post_text"=>$c->message, "pub_date"=>$c->created_time,
                                                 "in_reply_to_user_id"=>$profile->user_id,
@@ -510,8 +511,8 @@ class FacebookCrawler {
                                     if (isset($l->name) && isset($l->id)) {
                                         //Get users
                                         $user_to_add = array("user_name"=>$l->name, "full_name"=>$l->name,
-                                            "user_id"=>$l->id, "gender"=>$l->gender, "birthday"=>$l->birthday,
-                                            "avatar"=>'https://graph.facebook.com/'.$l->id.
+                                            "user_id"=>$l->id, //"gender"=>$l->gender, "birthday"=>$l->birthday,
+                                            "avatar"=>$api_url.$l->id.
                                             '/picture', "location"=>'', "description"=>'', "url"=>'', "is_protected"=>1,
                                             "follower_count"=>0, "post_count"=>0, "joined"=>'', "found_in"=>"Likes",
                                             "network"=>'facebook'); //Users are always set to network=facebook
@@ -560,8 +561,8 @@ class FacebookCrawler {
                                         if (isset($l->name) && isset($l->id)) {
                                             //Get users
                                             $user_to_add = array("user_name"=>$l->name, "full_name"=>$l->name,
-                                                "user_id"=>$l->id, "gender"=>$l->gender, "birthday"=>$l->birthday,
-                                                "avatar"=>'https://graph.facebook.com/'.$l->id.'/picture',
+                                                "user_id"=>$l->id, //"gender"=>$l->gender, "birthday"=>$l->birthday,
+                                                "avatar"=>$api_url.$l->id.'/picture',
                                                 "is_protected"=>1, "location"=>'', "description"=>'', "url"=>'',
                                                 "follower_count"=>0, "post_count"=>0, "joined"=>'', "found_in"=>"Likes",
                                                 "network"=>'facebook'); //Users are always set to network=facebook
@@ -730,7 +731,6 @@ class FacebookCrawler {
      * Retrieve Facebook friends for current instance and store in datastore.
      * @return void
      * @throws APIOAuthException
-     */
     private function fetchAndStoreSubscribers() {
         if ($this->instance->network != 'facebook') {
             return;
@@ -769,6 +769,7 @@ class FacebookCrawler {
             throw new APIOAuthException($stream->error->message);
         }
     }
+     */
 
     /**
      * Take a list of comments from a page or a post, run through pagination
